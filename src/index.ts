@@ -23,7 +23,6 @@ import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Rate limiting
 const limiter = rateLimit({
@@ -35,7 +34,9 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-frontend-domain.com', 'https://exp.host'] 
+    : process.env.CORS_ORIGIN || '*',
   credentials: true,
 }));
 app.use(morgan('combined'));
@@ -65,10 +66,13 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+const PORT = parseInt(process.env.PORT || '3000');
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on ${HOST}:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 Health check: http://${HOST}:${PORT}/health`);
 });
 
 export default app;
