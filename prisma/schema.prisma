@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    Int                   @id @default(autoincrement())
+  email                 String                @unique
+  name                  String                @default("")
+  passwordHash          String                @map("password_hash")
+  conditions            String[]              @default([])
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  
+  // Relations
+  weeklyPlans           WeeklyPlan[]
+  userFruitSelections   UserFruitSelection[]
+  
+  @@map("users")
+}
+
+model Fruit {
+  id                    Int                   @id @default(autoincrement())
+  name                  String                @unique
+  benefits              String
+  glycemicIndex         Int                   @map("glycemic_index")
+  sugarContent          Float                 @map("sugar_content")
+  calories              Float                 @default(0)
+  fiber                 Float                 @default(0)
+  vitaminC              Float                 @default(0) @map("vitamin_c")
+  potassium             Float                 @default(0)
+  image                 String?
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  
+  // Relations
+  restrictions          FruitRestriction[]
+  userFruitSelections   UserFruitSelection[]
+  
+  @@map("fruits")
+}
+
+model FruitRestriction {
+  id                    Int                   @id @default(autoincrement())
+  condition             String
+  fruitId               Int                   @map("fruit_id")
+  restrictionLevel      String                @map("restriction_level") // 'avoid', 'limit', 'moderate', 'recommended'
+  reason                String
+  createdAt             DateTime              @default(now()) @map("created_at")
+  
+  // Relations
+  fruit                 Fruit                 @relation(fields: [fruitId], references: [id], onDelete: Cascade)
+  
+  @@map("fruit_restrictions")
+}
+
+model WeeklyPlan {
+  id                    Int                   @id @default(autoincrement())
+  userId                Int                   @map("user_id")
+  week                  Int
+  year                  Int
+  planData              Json                  @map("plan_data") // Store the complete plan as JSON
+  explanation           String
+  nutritionalSummary    Json?                 @map("nutritional_summary")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  
+  // Relations
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, week, year])
+  @@map("weekly_plans")
+}
+
+model UserFruitSelection {
+  id                    Int                   @id @default(autoincrement())
+  userId                Int                   @map("user_id")
+  fruitId               Int                   @map("fruit_id")
+  week                  Int
+  year                  Int
+  dayOfWeek             Int                   @map("day_of_week") // 0-6 (Sunday-Saturday)
+  timeOfDay             String                @map("time_of_day") // 'morning', 'afternoon', 'evening'
+  quantity              Int                   @default(1)
+  notes                 String?
+  createdAt             DateTime              @default(now()) @map("created_at")
+  
+  // Relations
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fruit                 Fruit                 @relation(fields: [fruitId], references: [id], onDelete: Cascade)
+  
+  @@map("user_fruit_selections")
+}
