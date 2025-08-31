@@ -16,6 +16,7 @@ import authRoutes from './routes/auth';
 import fruitRoutes from './routes/fruits';
 import userRoutes from './routes/users';
 import planRoutes from './routes/plans';
+import userFruitRoutes from './routes/userFruits';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/fruits', fruitRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/plans', planRoutes);
+app.use('/api/user-fruits', userFruitRoutes);
 
 // Error handling middleware
 app.use(notFound);

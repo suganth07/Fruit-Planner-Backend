@@ -70,84 +70,96 @@ export const generatePlan = async (req: Request, res: Response): Promise<void> =
     });
 
     if (existingPlan) {
-      res.status(200).json({
-        success: true,
-        data: {
-          plan: existingPlan,
-          message: 'Plan already exists for this week'
-        }
+      // Delete existing plan to create a new one
+      await prisma.weeklyPlan.delete({
+        where: { id: existingPlan.id }
+      });
+    }
+
+    // Get user's selected fruits from database or use provided selectedFruits
+    let userFruitIds = selectedFruits || [];
+    
+    if (!selectedFruits || selectedFruits.length === 0) {
+      // Try to get from user fruit selections
+      const userSelections = await prisma.userFruitSelection.findMany({
+        where: {
+          userId: userId,
+          week: currentWeek,
+          year: currentYear
+        },
+        select: { fruitId: true }
+      });
+      
+      userFruitIds = [...new Set(userSelections.map(s => s.fruitId))];
+    }
+
+    // If still no fruits, get recommended fruits from fruit service
+    if (userFruitIds.length === 0) {
+      // Import and use the fruit recommendation service
+      const { FruitRecommendationService } = await import('../services/fruitService');
+      const fruitService = new FruitRecommendationService();
+      
+      const personalizedFruits = await fruitService.getPersonalizedRecommendations(user.conditions || []);
+      const recommendedFruits = personalizedFruits
+        .filter(f => f.recommendationLevel === 'recommended')
+        .slice(0, 7); // Take top 7 recommended fruits
+      
+      userFruitIds = recommendedFruits.map(f => f.id);
+    }
+
+    // Get fruit details for the selected fruits
+    const fruits = await prisma.fruit.findMany({
+      where: {
+        id: { in: userFruitIds }
+      }
+    });
+
+    if (fruits.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'No valid fruits selected or available for planning'
       });
       return;
     }
 
-    // Generate fallback plan for now
-    const aiPlan = {
-      dailyPlans: [
-        { 
-          day: 1, 
-          dayName: 'Monday', 
-          fruits: [
-            { fruitName: 'Apple', quantity: 1, timeOfDay: 'morning', benefits: 'Rich in fiber' },
-            { fruitName: 'Banana', quantity: 1, timeOfDay: 'afternoon', benefits: 'High in potassium' }
-          ]
-        },
-        { 
-          day: 2, 
-          dayName: 'Tuesday', 
-          fruits: [
-            { fruitName: 'Orange', quantity: 1, timeOfDay: 'morning', benefits: 'High in Vitamin C' },
-            { fruitName: 'Grapes', quantity: 1, timeOfDay: 'evening', benefits: 'Antioxidants' }
-          ]
-        },
-        { 
-          day: 3, 
-          dayName: 'Wednesday', 
-          fruits: [
-            { fruitName: 'Kiwi', quantity: 1, timeOfDay: 'morning', benefits: 'Vitamin C and fiber' },
-            { fruitName: 'Strawberry', quantity: 1, timeOfDay: 'afternoon', benefits: 'Low calories, high nutrients' }
-          ]
-        },
-        { 
-          day: 4, 
-          dayName: 'Thursday', 
-          fruits: [
-            { fruitName: 'Mango', quantity: 1, timeOfDay: 'morning', benefits: 'Rich in vitamin A' },
-            { fruitName: 'Pineapple', quantity: 1, timeOfDay: 'evening', benefits: 'Digestive enzymes' }
-          ]
-        },
-        { 
-          day: 5, 
-          dayName: 'Friday', 
-          fruits: [
-            { fruitName: 'Blueberry', quantity: 1, timeOfDay: 'morning', benefits: 'Antioxidants and brain health' },
-            { fruitName: 'Peach', quantity: 1, timeOfDay: 'afternoon', benefits: 'Vitamin A and C' }
-          ]
-        },
-        { 
-          day: 6, 
-          dayName: 'Saturday', 
-          fruits: [
-            { fruitName: 'Cherry', quantity: 1, timeOfDay: 'morning', benefits: 'Anti-inflammatory' },
-            { fruitName: 'Watermelon', quantity: 1, timeOfDay: 'evening', benefits: 'Hydration and lycopene' }
-          ]
-        },
-        { 
-          day: 7, 
-          dayName: 'Sunday', 
-          fruits: [
-            { fruitName: 'Papaya', quantity: 1, timeOfDay: 'morning', benefits: 'Digestive health' },
-            { fruitName: 'Pomegranate', quantity: 1, timeOfDay: 'afternoon', benefits: 'Heart health' }
-          ]
+    // Generate AI-powered weekly plan using selected fruits
+    const aiPlan = generateWeeklyPlanFromFruits(fruits, user.conditions || []);
+
+    // Save user fruit selections to database
+    if (selectedFruits && selectedFruits.length > 0) {
+      // Clear existing selections for this week
+      await prisma.userFruitSelection.deleteMany({
+        where: {
+          userId: userId,
+          week: currentWeek,
+          year: currentYear
         }
-      ],
-      explanation: 'This is a balanced weekly fruit plan designed to provide variety and essential nutrients throughout the week.',
-      nutritionalSummary: {
-        totalFruits: 14,
-        varietyCount: 14,
-        keyNutrients: ['Vitamin C', 'Fiber', 'Antioxidants', 'Potassium'],
-        weeklyBenefits: 'Improved digestion, immune support, heart health, and antioxidant protection'
+      });
+
+      // Create new selections distributed across the week
+      const selections = [];
+      for (let i = 0; i < selectedFruits.length; i++) {
+        const fruitId = selectedFruits[i];
+        const dayOfWeek = i % 7; // 0-6
+        const timeOfDay = i % 3 === 0 ? 'morning' : i % 3 === 1 ? 'afternoon' : 'evening';
+        
+        selections.push({
+          userId: userId,
+          fruitId: fruitId,
+          week: currentWeek,
+          year: currentYear,
+          dayOfWeek: dayOfWeek,
+          timeOfDay: timeOfDay,
+          quantity: 1
+        });
       }
-    };
+
+      if (selections.length > 0) {
+        await prisma.userFruitSelection.createMany({
+          data: selections
+        });
+      }
+    }
 
     // Save plan to database
     const weeklyPlan = await prisma.weeklyPlan.create({
@@ -155,9 +167,9 @@ export const generatePlan = async (req: Request, res: Response): Promise<void> =
         userId: userId,
         week: currentWeek,
         year: currentYear,
-        planData: JSON.parse(JSON.stringify(aiPlan.dailyPlans)), // Ensure proper JSON format
+        planData: JSON.parse(JSON.stringify(aiPlan.dailyPlans)),
         explanation: aiPlan.explanation,
-        nutritionalSummary: JSON.parse(JSON.stringify(aiPlan.nutritionalSummary)) // Ensure proper JSON format
+        nutritionalSummary: JSON.parse(JSON.stringify(aiPlan.nutritionalSummary))
       }
     });
 
@@ -166,7 +178,8 @@ export const generatePlan = async (req: Request, res: Response): Promise<void> =
       data: {
         plan: weeklyPlan,
         explanation: aiPlan.explanation,
-        nutritionalSummary: aiPlan.nutritionalSummary
+        nutritionalSummary: aiPlan.nutritionalSummary,
+        fruitsUsed: fruits.length
       }
     });
 
@@ -188,6 +201,84 @@ export const generatePlan = async (req: Request, res: Response): Promise<void> =
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
+};
+
+// Helper function to generate weekly plan from selected fruits
+const generateWeeklyPlanFromFruits = (fruits: any[], conditions: string[]) => {
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const timeSlots = ['morning', 'afternoon', 'evening'];
+  
+  const dailyPlans = [];
+  let fruitIndex = 0;
+  
+  for (let day = 0; day < 7; day++) {
+    const dayFruits = [];
+    
+    // Add 2-3 fruits per day, cycling through selected fruits
+    const fruitsPerDay = Math.min(3, Math.max(1, Math.floor(fruits.length / 7) + 1));
+    
+    for (let meal = 0; meal < fruitsPerDay; meal++) {
+      if (fruitIndex >= fruits.length) {
+        fruitIndex = 0; // Cycle back to start
+      }
+      
+      const fruit = fruits[fruitIndex];
+      const timeOfDay = timeSlots[meal % timeSlots.length];
+      
+      dayFruits.push({
+        fruitName: fruit.name,
+        quantity: 1,
+        timeOfDay: timeOfDay,
+        benefits: fruit.benefits,
+        calories: fruit.calories,
+        fiber: fruit.fiber,
+        vitaminC: fruit.vitaminC
+      });
+      
+      fruitIndex++;
+    }
+    
+    dailyPlans.push({
+      day: day + 1,
+      dayName: dayNames[day],
+      fruits: dayFruits
+    });
+  }
+  
+  // Generate nutritional summary
+  const totalFruits = dailyPlans.reduce((total, day) => total + day.fruits.length, 0);
+  const uniqueFruits = new Set(fruits.map(f => f.name)).size;
+  const totalCalories = dailyPlans.reduce((total, day) => 
+    total + day.fruits.reduce((dayTotal, fruit) => dayTotal + fruit.calories, 0), 0
+  );
+  const totalFiber = dailyPlans.reduce((total, day) => 
+    total + day.fruits.reduce((dayTotal, fruit) => dayTotal + fruit.fiber, 0), 0
+  );
+  const totalVitaminC = dailyPlans.reduce((total, day) => 
+    total + day.fruits.reduce((dayTotal, fruit) => dayTotal + fruit.vitaminC, 0), 0
+  );
+  
+  const nutritionalSummary = {
+    totalFruits: totalFruits,
+    varietyCount: uniqueFruits,
+    weeklyCalories: Math.round(totalCalories),
+    weeklyFiber: Math.round(totalFiber * 10) / 10,
+    weeklyVitaminC: Math.round(totalVitaminC * 10) / 10,
+    keyNutrients: ['Vitamin C', 'Fiber', 'Antioxidants', 'Natural Sugars'],
+    weeklyBenefits: `Personalized nutrition plan with ${uniqueFruits} different fruits providing ${Math.round(totalCalories)} calories and ${Math.round(totalFiber * 10) / 10}g fiber for the week.`
+  };
+  
+  const conditionsText = conditions.length > 0 
+    ? ` tailored for ${conditions.map(c => c.replace(/_/g, ' ')).join(', ')}`
+    : '';
+  
+  const explanation = `This personalized weekly fruit plan uses your selected fruits to create a balanced nutrition schedule${conditionsText}. The plan provides variety across the week while ensuring you get optimal nutrition from fruits you've chosen based on your preferences and health conditions.`;
+  
+  return {
+    dailyPlans,
+    explanation,
+    nutritionalSummary
+  };
 };
 
 export const getUserPlans = async (req: Request, res: Response): Promise<void> => {

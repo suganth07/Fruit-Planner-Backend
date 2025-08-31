@@ -1,15 +1,16 @@
 import { Router } from 'express';
-import { getAllFruits } from '../controllers/fruitsController';
+import { getAllFruits, getPersonalizedFruits, getRecommendedFruits } from '../controllers/fruitsController';
 
 const router = Router();
 
 // GET /api/fruits - Get all fruits
 router.get('/', getAllFruits);
 
-// GET /api/fruits/recommended - Get recommended fruits based on conditions
-router.get('/recommended', (req, res) => {
-  res.json({ message: 'Get recommended fruits endpoint - Coming soon' });
-});
+// GET /api/fruits/personalized/:userId - Get personalized fruits based on user's conditions
+router.get('/personalized/:userId', getPersonalizedFruits);
+
+// GET /api/fruits/recommended/:userId - Get only recommended fruits for user
+router.get('/recommended/:userId', getRecommendedFruits);
 
 // GET /api/fruits/:id - Get fruit by ID
 router.get('/:id', (req, res) => {
