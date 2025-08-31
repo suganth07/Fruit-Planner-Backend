@@ -1,11 +1,10 @@
 import { Router } from 'express';
+import { getAllFruits } from '../controllers/fruitsController';
 
 const router = Router();
 
 // GET /api/fruits - Get all fruits
-router.get('/', (req, res) => {
-  res.json({ message: 'Get all fruits endpoint - Coming soon' });
-});
+router.get('/', getAllFruits);
 
 // GET /api/fruits/recommended - Get recommended fruits based on conditions
 router.get('/recommended', (req, res) => {

@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../config/database';
-import { MedicalCondition } from '../types';
 
 // Validation schemas
 const updateConditionsSchema = z.object({
@@ -27,10 +26,16 @@ export const updateUserConditions = async (req: Request, res: Response): Promise
 
     const { conditions } = updateConditionsSchema.parse(req.body);
 
+    // Log the conditions being saved for debugging
+    console.log('Saving conditions for user:', userId, 'Conditions:', conditions);
+
     // Update user conditions in database
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: { conditions },
+      data: { 
+        conditions,
+        updatedAt: new Date()
+      },
       select: {
         id: true,
         email: true,
@@ -41,8 +46,11 @@ export const updateUserConditions = async (req: Request, res: Response): Promise
       }
     });
 
+    console.log('Updated user:', updatedUser);
+
     res.json({
       success: true,
+      message: 'Medical conditions updated successfully',
       data: {
         user: updatedUser
       }
@@ -84,7 +92,10 @@ export const updateUserProfile = async (req: Request, res: Response): Promise<vo
     // Update user profile in database
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: updateData,
+      data: {
+        ...updateData,
+        updatedAt: new Date()
+      },
       select: {
         id: true,
         email: true,
@@ -97,6 +108,7 @@ export const updateUserProfile = async (req: Request, res: Response): Promise<vo
 
     res.json({
       success: true,
+      message: 'Profile updated successfully',
       data: {
         user: updatedUser
       }
@@ -166,6 +178,101 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
     res.status(500).json({
       success: false,
       error: 'Failed to fetch user profile',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// New function to get personalized fruit recommendations
+export const getPersonalizedFruits = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: 'User not authenticated'
+      });
+      return;
+    }
+
+    // Get user with conditions
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        conditions: true
+      }
+    });
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+      return;
+    }
+
+    // Get all fruits with their restrictions
+    const fruits = await prisma.fruit.findMany({
+      include: {
+        restrictions: true
+      }
+    });
+
+    // Filter fruits based on user conditions
+    const personalizedFruits = fruits.map(fruit => {
+      const userConditions = user.conditions || [];
+      const relevantRestrictions = fruit.restrictions.filter(restriction => 
+        userConditions.includes(restriction.condition)
+      );
+
+      let recommendationLevel = 'neutral';
+      let reasons: string[] = [];
+
+      if (relevantRestrictions.length > 0) {
+        // Determine the most restrictive level
+        const levels = relevantRestrictions.map(r => r.restrictionLevel);
+        if (levels.includes('avoid')) {
+          recommendationLevel = 'avoid';
+        } else if (levels.includes('limit')) {
+          recommendationLevel = 'limit';
+        } else if (levels.includes('moderate')) {
+          recommendationLevel = 'moderate';
+        } else if (levels.includes('recommended')) {
+          recommendationLevel = 'recommended';
+        }
+
+        reasons = relevantRestrictions.map(r => r.reason);
+      }
+
+      return {
+        ...fruit,
+        recommendationLevel,
+        reasons,
+        restrictions: undefined // Remove detailed restrictions from response
+      };
+    });
+
+    // Sort fruits by recommendation level (recommended first, avoid last)
+    const sortOrder = { recommended: 0, moderate: 1, neutral: 2, limit: 3, avoid: 4 };
+    personalizedFruits.sort((a, b) => 
+      sortOrder[a.recommendationLevel as keyof typeof sortOrder] - 
+      sortOrder[b.recommendationLevel as keyof typeof sortOrder]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        fruits: personalizedFruits,
+        userConditions: user.conditions
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting personalized fruits:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get personalized fruit recommendations',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
