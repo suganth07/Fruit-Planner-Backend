@@ -37,8 +37,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const { username, password, name } = validatedData;
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { username }
+    const existingUser = await prisma.user.findFirst({
+      where: { 
+        OR: [
+          { username },
+          { email: username } // Support login with email as well
+        ]
+      }
     });
 
     if (existingUser) {
@@ -111,9 +116,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const validatedData = loginSchema.parse(req.body);
     const { username, password } = validatedData;
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { username },
+    // Find user by username or email
+    const user = await prisma.user.findFirst({
+      where: { 
+        OR: [
+          { username },
+          { email: username } // Support login with email as well
+        ]
+      },
       select: {
         id: true,
         username: true,
