@@ -66,10 +66,10 @@ app.use(errorHandler);
 // Start server
 const PORT = parseInt(process.env.PORT || '3000');
 
-app.listen(PORT, '192.168.1.6', () => {
-  console.log(`🚀 Server running on 192.168.1.6:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on 0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://192.168.1.6:${PORT}/health`);
+  console.log(`🔗 Health check: http://0.0.0.0:${PORT}/health`);
 });
 
 export default app;
