@@ -7,14 +7,13 @@ import { ApiResponse, MedicalCondition } from '../types';
 
 // Validation schemas
 const registerSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  name: z.string().min(1, 'Name is required'),
-  conditions: z.array(z.nativeEnum(MedicalCondition)).optional()
+  name: z.string().min(1, 'Name is required')
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required')
 });
 
@@ -35,17 +34,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     // Validate input
     const validatedData = registerSchema.parse(req.body);
-    const { email, password, name, conditions = [] } = validatedData;
+    const { username, password, name } = validatedData;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { username }
     });
 
     if (existingUser) {
       const response: ApiResponse = {
         success: false,
-        error: 'User with this email already exists'
+        error: 'User with this username already exists'
       };
       res.status(400).json(response);
       return;
@@ -55,17 +54,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Create user
+    // Create user without medical conditions (they can be added later)
     const user = await prisma.user.create({
       data: {
-        email,
+        username,
         name,
         passwordHash,
-        conditions: conditions as string[]
+        conditions: [] // Empty array, conditions can be updated later via settings
       },
       select: {
         id: true,
-        email: true,
+        username: true,
         name: true,
         conditions: true,
         createdAt: true,
@@ -110,13 +109,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     // Validate input
     const validatedData = loginSchema.parse(req.body);
-    const { email, password } = validatedData;
+    const { username, password } = validatedData;
 
     // Find user
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { username },
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         passwordHash: true,
@@ -129,7 +129,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!user) {
       const response: ApiResponse = {
         success: false,
-        error: 'Invalid email or password'
+        error: 'Invalid username or password'
       };
       res.status(401).json(response);
       return;

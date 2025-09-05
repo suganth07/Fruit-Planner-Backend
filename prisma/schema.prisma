@@ -12,10 +12,12 @@ datasource db {
 
 model User {
   id                    Int                   @id @default(autoincrement())
-  email                 String                @unique
+  username              String                @unique
+  email                 String?               
   name                  String                @default("")
   passwordHash          String                @map("password_hash")
   conditions            String[]              @default([])
+  isSetupComplete       Boolean               @default(false) @map("is_setup_complete")
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
   

@@ -34,9 +34,7 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com', 'https://exp.host'] 
-    : process.env.CORS_ORIGIN || '*',
+  origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }));
 app.use(morgan('combined'));
@@ -67,12 +65,11 @@ app.use(errorHandler);
 
 // Start server
 const PORT = parseInt(process.env.PORT || '3000');
-const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running on ${HOST}:${PORT}`);
+app.listen(PORT, '192.168.1.6', () => {
+  console.log(`🚀 Server running on 192.168.1.6:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://${HOST}:${PORT}/health`);
+  console.log(`🔗 Health check: http://192.168.1.6:${PORT}/health`);
 });
 
 export default app;
